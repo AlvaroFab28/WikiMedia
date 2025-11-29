@@ -1356,3 +1356,321 @@ Deberías estar viendo gráficos de CPU, RAM, Disco y Red de **TODAS** tus máqu
 - [ ] Entrás a `http://192.168.0.20:3000` y ves el dashboard lleno de colores y datos.
 
 Si tenés esto, ya tenés una infraestructura profesional. Solo te falta el **Jefe Final**: La **Fase 6 (Seguridad y Hardening)** para cerrar puertos y que no te entre ningún virus ni hacker trasnochado.
+
+# 🛡️ Fase 6: El Blindaje Final (Seguridad y Hardening)
+
+> **Estado:** Crítico 🚨
+> **Objetivo:** Cerrar todas las puertas, tirar la llave y dejar abierta solo la ventanita necesaria. Si no estás en la lista VIP, no entrás.
+
+Vamos a trabajar en tres capas: **SSH** (Gestión), **SSL/TLS** (Encriptación web + Dominio Pro) y **UFW** (Firewall).
+
+-----
+
+## ⚡ Paso Previo: Ajuste de Identidad (DNS)
+
+*Hacelo en el Monitor (.20) para que el dominio `wiki.usfx.bo` funcione.*
+
+Antes de blindar, asegurate que tu DNS sepa quién es `wiki.usfx.bo`.
+
+1.  En la VM **Monitor (.20)**: `sudo nano /etc/dnsmasq.conf`
+2.  Cambiá la línea de address por: `address=/wiki.usfx.bo/192.168.0.10`
+3.  Reiniciá: `sudo systemctl restart dnsmasq`
+
+-----
+
+## Sub-fase A: SSH Seguro (Puerto 2222) 🔑
+
+*Esto se hace en **LAS 8 MÁQUINAS** (Proxies, Apps, DB, Redis, NFS, Monitor).*
+
+Ahora mismo el SSH está en el puerto 22. Es el primer lugar donde pegan los bots. Vamos a moverlo al **2222** y prohibir que entre el `root` directo.
+
+### 1\. Cambiar la configuración (En todas las VMs)
+
+Vas a tener que entrar una por una (sí, es un embole, pero es necesario).
+
+**Editar archivo:**
+
+```bash
+sudo nano /etc/ssh/sshd_config
+```
+
+*(Ojo: puede ser `sshd_config`, no `ssh_config`. El que tiene la 'd' es el del demonio servidor).*
+
+**Modificar:**
+Buscá y cambiá estas líneas (si tienen un `#` adelante, borraselo para descomentar):
+
+```ini
+Include /etc/ssh/sshd_config.d/*.conf
+
+# Cambiamos el puerto estándar
+Port 2222
+
+# ¡SEGURIDAD MÁXIMA! El root no entra ni a palos por SSH
+PermitRootLogin no
+
+# Opcional pero recomendado: Solo tu usuario (ej. ubuntu)
+# AllowUsers tu_usuario
+```
+
+### 2\. Reiniciar el servicio (¡Con cuidado\!) ⚠️
+
+Antes de salir, reiniciá el servicio.
+
+```bash
+sudo systemctl restart ssh
+```
+
+> **¡NO TE DESCONECTES TODAVÍA\!** 🛑
+> Abrí **otra terminal nueva** en tu PC física y probá entrar con el puerto nuevo para asegurarte de que no te quedaste afuera:
+> `ssh -p 2222 usuario@192.168.0.XX`
+>
+> Si entra, joya. Si no, revisá el archivo antes de cerrar la sesión actual.
+
+-----
+
+## Sub-fase B: Cifrado SSL/TLS y Dominio (Solo Proxies y Apps) 🔐
+
+*Hacemos que el sitio sea HTTPS y responda como `wiki.usfx.bo`.*
+
+### 1\. Generar los Certificados (En ambos Proxies: .11 y .12)
+
+Vamos a crear el DNI del servidor. Acordate de poner el dominio bien.
+
+**Comando mágico:**
+
+```bash
+sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \-keyout /etc/ssl/private/nginx-selfsigned.key \-out /etc/ssl/certs/nginx-selfsigned.crt
+```
+
+**⚠️ Atención acá:**
+Te va a pedir país, provincia, etc. Poné BO, Chuquisaca, Sucre, USFX, lo que quieras., pero el más importante es:
+
+  * **Common Name (FQDN):** `wiki.usfx.bo`  \<--- **¡CLAVE\!**
+
+### 2\. Configurar Nginx (En ambos Proxies: .11 y .12)
+
+Editamos el sitio por defecto.
+
+```bash
+sudo nano /etc/nginx/sites-available/default
+```
+
+**El Código Blindado:**
+Borrá todo y pegá esto:
+
+```nginx
+# Grupo de servidores de backend
+upstream backend_wiki {
+    server 192.168.0.13:80; #App1
+    server 192.168.0.14:80; #App2
+}
+
+# Bloque HTTP (Puerto 80) -> Redirige a HTTPS
+server {
+    listen 80;
+    server_name _;
+    return 301 https://$host$request_uri;
+}
+
+# Bloque HTTPS (Puerto 443)
+server {
+    listen 443 ssl;
+    server_name wiki.usfx.bo; # Tu dominio oficial
+
+    # Certificados
+    ssl_certificate /etc/ssl/certs/nginx-selfsigned.crt;
+    ssl_certificate_key /etc/ssl/private/nginx-selfsigned.key;
+
+    # Protocolos seguros
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    # Hardening
+    server_tokens off;
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-XSS-Protection "1; mode=block";
+
+    location / {
+        proxy_pass http://backend_wiki;
+        
+        # Cabeceras para que la Wiki entienda quién es
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https; # ¡Fundamental!
+    }
+}
+```
+
+**Aplicar:** 
+```Bash
+sudo nginx -t
+
+sudo systemctl restart nginx
+```
+(Repetir en el Proxy 2).
+### 3\. Configurar la Wiki (En ambas Apps: .13 y .14) 📝
+
+Le avisamos a MediaWiki que ahora se llama "wiki.usfx.bo" y usa HTTPS.
+
+```bash
+sudo nano /var/www/html/wiki/LocalSettings.php
+```
+
+**Buscar y cambiar:**
+
+```php
+# Forzamos dominio y HTTPS
+$wgServer = "https://wiki.usfx.bo";
+```
+
+Guardar y salir.
+
+-----
+
+## Sub-fase C: Firewall UFW (El Guardia) 🚪⛔
+
+*Vamos a configurar el firewall de Linux (UFW). Política: "Denegar todo por defecto".*
+
+> **Nota:** En cada grupo agregué el comando para instalar `ufw` por si te falta.
+
+### Grupo 1: Los Proxies (`.11` y `.12`)
+
+La cara visible de la red.
+
+```bash
+# 0. Instalar UFW (por si las moscas)
+sudo apt update && sudo apt install ufw -y
+
+# 1. Resetear reglas viejas
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+# 2. Permitir SSH (¡OJO! Puerto 2222, no el 22)
+sudo ufw allow 2222/tcp
+
+# 3. Permitir Tráfico Web (HTTP y HTTPS)
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+
+# 4. Permitir VRRP (Keepalived)
+# IP Multicast estándar (La 224.0.0.18 es la dirección exclusiva donde hablan los routers VRRP).
+sudo ufw allow in from 192.168.0.0/24 to 224.0.0.18 comment 'Allow VRRP'
+# Por las dudas, permitimos comunicación directa entre proxies
+sudo ufw allow from 192.168.0.11
+sudo ufw allow from 192.168.0.12
+
+# 5. Permitir monitoreo
+sudo ufw allow from 192.168.0.20 to any port 9100
+
+# 6. Activar (Si te pregunta "Yes/No", mandale Y)
+sudo ufw enable
+```
+
+### Grupo 2: El Monitor (`.20`)
+
+La torre de control, este necesita ver a todos y que lo vean a él.
+
+```bash
+sudo apt update && sudo apt install ufw -y
+sudo ufw default deny incoming
+sudo ufw allow 2222/tcp
+
+# DNS
+sudo ufw allow 53
+
+# Grafana
+sudo ufw allow 3000/tcp
+
+# Prometheus (Opcional si querés entrar a ver datos crudos)
+sudo ufw allow 9090/tcp
+
+sudo ufw enable
+```
+
+### Grupo 3: Las Apps (`.13` y `.14`)
+
+Solo hablan con los jefes (Proxies) y del Monitor. Nadie más entra directo.
+
+```bash
+sudo apt update && sudo apt install ufw -y
+sudo ufw default deny incoming
+sudo ufw allow 2222/tcp
+
+# Solo los Proxies entran a la web (Puerto 80)
+sudo ufw allow from 192.168.0.11 to any port 80
+sudo ufw allow from 192.168.0.12 to any port 80
+
+# Monitoreo
+sudo ufw allow from 192.168.0.20 to any port 9100
+
+sudo ufw enable
+```
+
+### Grupo 4: Los Datos (`.17` DB, `.16` Redis, `.15` NFS)
+
+La bóveda secreta, solo entran las Apps..
+
+#### Para MariaDB (`.17`)
+
+```bash
+sudo apt update && sudo apt install ufw -y
+sudo ufw default deny incoming
+sudo ufw allow 2222/tcp
+
+# Solo las Apps entran a la DB (3306)
+sudo ufw allow from 192.168.0.13 to any port 3306
+sudo ufw allow from 192.168.0.14 to any port 3306
+
+# Monitoreo
+sudo ufw allow from 192.168.0.20 to any port 9100
+
+sudo ufw enable
+```
+
+#### Para Redis (`.16`)
+
+```bash
+sudo apt update && sudo apt install ufw -y
+sudo ufw default deny incoming
+sudo ufw allow 2222/tcp
+
+# Solo las Apps entran a Redis (6379)
+sudo ufw allow from 192.168.0.13 to any port 6379
+sudo ufw allow from 192.168.0.14 to any port 6379
+
+# Monitoreo
+sudo ufw allow from 192.168.0.20 to any port 9100
+
+sudo ufw enable
+```
+
+#### Para NFS (`.15`)
+
+El más complicado por los puertos dinámicos (RPC). Confiamos en la IP de origen.
+
+```bash
+sudo apt update && sudo apt install ufw -y
+sudo ufw default deny incoming
+sudo ufw allow 2222/tcp
+
+# Permitimos TODO el tráfico de las Apps (para el montaje NFS)
+sudo ufw allow from 192.168.0.13
+sudo ufw allow from 192.168.0.14
+
+# Monitoreo
+sudo ufw allow from 192.168.0.20 to any port 9100
+
+sudo ufw enable
+```
+
+-----
+
+## 🏁 Verificación Final del Proyecto (El Gran Final)
+
+**Checklist de la victoria:**
+
+1. **SSH Blindado:** Intentá entrar por SSH puerto 22. Debe fallar (Connection refused). Intentá por el 2222. Debe entrar.
+2. **Dominio Pro:** Entrá a `http://wiki.usfx.bo`. Te debe redirigir a `https://wiki.usfx.bo`.
+3. **Wiki Viva:** Aceptá el riesgo del certificado y navegá. La URL debe mantenerse como `wiki.usfx.bo` (no debe aparecer la IP `.10`).
+4. **Muralla de Fuego:** Intentá entrar directo a la base de datos `.17` desde tu PC física con algún cliente SQL o Ping. Debería rebotarte el firewall (o dar timeout), a menos que seas una App autorizada.
