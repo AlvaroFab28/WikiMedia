@@ -45,14 +45,16 @@ sudo netplan apply
 
 | Ubicación Física | Rol | Hostname Sugerido | IP (Netplan) | Notas |
 | :--- | :--- | :--- | :--- | :--- |
+| **PC 1** | Monitor + DNS | `srv-monitor` | `192.168.0.20` | Prometheus + Grafana + Dnsmasq|
 | **PC 1** | Proxy Master | `ha1-proxy` | `192.168.0.11` | Nginx + Keepalived |
 | **PC 1** | Proxy Backup | `ha2-proxy` | `192.168.0.12` | Nginx + Keepalived |
-| **PC 1** | **VIP (Virtual)** | N/A | `192.168.0.10` | **No poner en Netplan**. La maneja Keepalived. |
+| **PC 1** | **VIP (Virtual)** | wiki.usfx | `192.168.0.10` | **No poner en Netplan**. La maneja Keepalived. |
 | **PC 2** | App Wiki 1 | `app1-wiki` | `192.168.0.13` | Apache/Nginx + PHP |
 | **PC 2** | App Wiki 2 | `app2-wiki` | `192.168.0.14` | Apache/Nginx + PHP |
 | **PC 2** | NFS Server | `srv-nfs` | `192.168.0.15` | Almacenamiento compartido |
 | **PC 3** | Redis | `srv-redis` | `192.168.0.16` | Caché de objetos/sesiones |
 | **PC 3** | MariaDB | `srv-db` | `192.168.0.17` | Base de datos principal |
+
 
 ---
 
@@ -113,11 +115,41 @@ No se pongan a instalar todo de golpe porque se les va a armar un **quilombo** b
 
 ---
 
-### Fase 5: El Blindaje (Seguridad y Monitoreo) 🛡️
-*Esto lo dejan para el final, cuando todo ande.*
+### Fase 5: El Cerebro (Monitoreo y DNS) 👁️🧠 
+Acá entra la nueva VM en PC 3.
 
-1.  **Hardening (UFW):** Bloquear todo el tráfico y solo permitir los puertos necesarios entre sí (Lab 5.1).
-2.  **Monitoreo:** Levantar Prometheus/Grafana apuntando a todos los nodos para ver métricas en tiempo real.
+**Monitor + DNS (.20):**
+
+* **Rol:** Torre de control.
+* **Acción 1 (Monitor):** Instalar Prometheus y Grafana SOLO en esta VM.
+* **Acción 2 (Dns):** Instalar dnsmasq. Configurar para que wiki.usfx apunte a la VIP .10.
+
+**Resto de las VMs (Las otras 8):**
+
+* **Acción:** Instalar prometheus-node-exporter.
+* **Resultado:** Resolución de nombres local y un tablero en la .20:3000 que te muestra CPU, RAM y estado de toda la red, sin molestar a los servidores de producción.
+
+### Fase 6: El Blindaje Final (Seguridad "Paranoica") 🛡️ 
+Se hace al final para no bloquearse afuera.
+
+**Sub-fase A: SSH Seguro (Puerto 2222)**
+
+* **Acción:** En TODAS las VMs (las 8), cambiar el puerto SSH al 2222 y deshabilitar el login de root (PermitRootLogin no).
+* **Orden:** Primero abrir 2222 en UFW, luego cambiar config SSH, luego reiniciar servicio.
+
+**Sub-fase B: Cifrado SSL/TLS (Solo Proxies)**
+
+* **Acción:** Generar certificados autofirmados en los Proxies (.11 y .12). Configurar Nginx para escuchar en 443, forzar TLS 1.2/1.3 y redirigir HTTP a HTTPS.
+* **Hardening:** Ocultar versión de Nginx (server_tokens off), aplicar Rate Limiting (anti-DDoS) y cabeceras de seguridad (HSTS, X-Frame-Options).
+
+**Sub-fase C: Firewall UFW Definitivo**
+
+* **Acción:** Aplicar política de "Denegar todo por defecto" (default deny incoming).
+* **Reglas:**
+    * **Proxies:** Abren 80, 443, 2222 y VRRP.
+    * **Monitor/DNS (.20):** Abre 53(DNS), 3000(Grafana) y 2222(SSH Admin).
+    * **Apps/DB/Redis:** Solo aceptan conexiones de sus "jefes" (Proxies o Apps) y del Monitor (puerto 9100 para métricas).
+    * **SSH:** Todo por el puerto 2222.
 
 ## 🗺️ Roadmap de hoy: Los Cimientos (La Base de Datos)
 
@@ -1034,4 +1066,293 @@ Vamos a ver si es verdad que esto anda.
 - **Ahora:** ¡Seguís adentro! Porque la sesión está guardada segura en Redis (`.16`).
 
 > Si ves el monitor escupiendo datos, ¡Fase 4 completada! 🥂 Tu infraestructura ya es de alto rendimiento.
-> ¿Viste las líneas en el monitor? Si está todo OK, nos queda la **Fase 5: El Blindaje (Seguridad y Monitoreo Final)** para cerrar el proyecto con moño.
+> ¿Viste las líneas en el monitor? Si está todo OK, nos queda la **Fase 5.
+
+# Fase 5 "Guía Maestra: Servidor Monitor + DNS (`srv-monitor`)"
+
+> **Rol:** Torre de Control y DNS de toda la red.
+> **IP:** `192.168.0.20`
+> **Objetivo:** Instalar con internet -> Blindar para Offline -> Conectar celulares.
+
+## Servidor DNS (Dnsmasq)
+
+#### Paso 1: Configuración de Red "Modo Instalación" (Con Internet) 🌐
+
+Primero necesitamos que la VM tenga salida a la calle para bajar el `dnsmasq`.
+
+**Editar Netplan:**
+
+```bash
+sudo nano /etc/netplan/50-cloud-init.yaml
+```
+
+**El Código (Copiá y pegá):**
+Fijate que en `nameservers` ponemos los de Google (8.8.8.8). Esto es temporal para tener internet.
+
+```yaml
+network:
+  version: 2
+  ethernets:
+    enp0s3:
+      dhcp4: no
+      addresses:
+        - 192.168.0.20/24  # IP DEL MONITOR
+      routes:
+        - to: default
+          via: 192.168.0.1 # Tu router físico
+      nameservers:
+        addresses:
+          - 8.8.8.8      # <--- Dejamos Google para poder instalar
+          - 1.1.1.1
+```
+
+**Aplicar:**
+
+```bash
+sudo netplan apply
+```
+
+#### Paso 2: Eliminar el Bug de "Sudo" (Host Unresolved) 🐛
+
+Antes de seguir, matamos ese error molesto de `sudo: unable to resolve host`.
+
+**Editar hosts:**
+
+```bash
+sudo nano /etc/hosts
+```
+
+**Agregar tu nombre:** Agregá la línea de `srv-monitor` debajo de localhost.
+
+```text
+127.0.0.1 localhost
+127.0.0.1 srv-monitor  <--- ¡ESTO SACA EL ERROR DEL SUDO!
+127.0.1.1 srv-monitor  <--- Por las dudas
+```
+
+#### Paso 3: Limpieza e Instalación de Dnsmasq 🧹
+
+En Ubuntu 24.04, `systemd-resolved` molesta en el puerto 53. Lo sacamos y ponemos el nuestro.
+
+**Limpiar el terreno:**
+
+```bash
+# Apagamos el servicio que molesta
+sudo systemctl stop systemd-resolved
+sudo systemctl disable systemd-resolved
+sudo unlink /etc/resolv.conf
+
+# Creamos un archivo temporal para no perder internet durante la instalación
+echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+```
+
+**Instalar Dnsmasq:**
+
+```bash
+sudo apt update && sudo apt install dnsmasq -y
+```
+
+#### Paso 4: Configuración Híbrida de Dnsmasq ⚙️
+
+Acá armamos el archivo para que sea fácil pasar de "Online" a "Offline".
+
+**Editar:**
+
+```bash
+sudo nano /etc/dnsmasq.conf
+```
+
+**El Código Definitivo:** Copiá esto tal cual.
+
+```ini
+# --- Configuración Base ---
+# No mirar los DNS del sistema /etc/resolv.conf
+no-resolv
+# Escuchar peticiones locales y de la red (IP .20)
+interface=enp0s3
+listen-address=127.0.0.1,192.168.0.20
+
+# --- INTERNET (COMENTAR PARA MODO OFFLINE) ---
+# Si querés que la red tenga internet, dejá esto descomentado.
+# Si querés velocidad máxima OFFLINE, comentá estas dos líneas con #.
+server=8.8.8.8
+server=1.1.1.1
+
+# --- TU DOMINIO (LA MAGIA) ---
+# Esto funciona siempre, con o sin internet.
+address=/wiki.usfx/192.168.0.10
+```
+
+**Reiniciar el servicio:**
+
+```bash
+sudo systemctl restart dnsmasq
+```
+
+#### Paso 5: El "Switch" a Modo Turbo/Offline (Arregla el Ping) 🚀
+
+Acá está la clave para que el servidor también pueda resolver sus propios dominios.
+
+**1. Editar Netplan OTRA VEZ:**
+
+```bash
+sudo nano /etc/netplan/50-cloud-init.yaml
+```
+
+**El Cambio Mágico:** Cambiá los DNS de Google por `127.0.0.1`.
+
+```yaml
+      nameservers:
+        addresses:
+          - 127.0.0.1     # <--- ¡AHORA SÍ! Preguntamos a casa.
+        # - 8.8.8.8       # Comentamos Google para evitar lags
+```
+
+**Aplicar:**
+
+```bash
+sudo netplan apply
+```
+
+**2. El Ajuste Manual (El Secreto de la Casa):** 🔥
+Como matamos al gestor automático en el Paso 3, tenemos que obligar al sistema operativo a mirar al localhost, si no se queda con el DNS viejo.
+
+```bash
+sudo rm -f /etc/resolv.conf
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf
+```
+
+**Prueba de Fuego:**
+
+```bash
+ping -c 4 wiki.usfx
+```
+
+*¡Ahora sí te va a responder la .10 desde el propio monitor\!*
+
+#### Paso 6: Expansión a la LAN (Celulares y PCs) 📱💻
+
+Para que tus compañeros entren fácil sin configurar nada en sus celus.
+
+1.  Entrá a la configuración de tu **Router Físico**.
+2.  Buscá **DHCP Settings** (Configuración LAN).
+3.  En **Primary DNS**, poné: `192.168.0.20`.
+4.  Guardá cambios y decile a todos que apaguen y prendan el WiFi.
+
+-----
+
+### 🍒 La Cereza del Postre: Mini-Monitor en Tiempo Real
+
+¿Querés ver "la Matrix"? ¿Querés ver quién está entrando a qué en tu red en tiempo real?
+Tirale este comando mágico en la terminal del servidor y dejalo corriendo:
+
+```bash
+sudo tcpdump -n port 53
+```
+
+**¿Qué hace esto?**
+Te muestra en vivo todas las consultas DNS que le llegan a tu servidor. Si alguien entra a `wiki.usfx` desde un celular, ¡pum\! Lo ves aparecer ahí al toque. Es adictivo. 😎
+
+
+## Monitor
+
+### Paso 1: Instalar el Recolector de Métricas (Prometheus)
+Prometheus es el que va recolectando métricas. Es el "buchón" que anota todo lo que pasa.
+
+**Instalar:**
+```bash
+sudo apt install prometheus -y
+```
+
+**Configurar el "Scraping" (A quién vamos a espiar):**
+Tenemos que decirle a Prometheus que lea los datos de **TODAS** tus VMs.
+Editá el archivo:
+```bash
+sudo nano /etc/prometheus/prometheus.yml
+```
+
+Buscá la sección `scrape_configs` y dejala parecida a esto. Agregá el trabajo `infraestructura_wiki` con todas tus IPs.
+```yaml
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'infraestructura_wiki'
+    static_configs:
+      - targets: 
+        - '192.168.0.11:9100' # Proxy 1
+        - '192.168.0.12:9100' # Proxy 2
+        - '192.168.0.13:9100' # App 1
+        - '192.168.0.14:9100' # App 2
+        - '192.168.0.15:9100' # NFS
+        - '192.168.0.16:9100' # Redis
+        - '192.168.0.17:9100' # MariaDB
+        - '192.168.0.20:9100' # Monitor (Sí, a sí mismo también)
+```
+*(Ojo con la indentación, YAML es más sensible que cristal de bohemia).*
+
+**Reiniciar:**
+```bash
+sudo systemctl restart prometheus
+```
+
+### Paso 2: Instalar los Agentes (Node Exporter)
+Prometheus está escuchando, pero nadie le habla todavía. Tenés que instalar el agente `prometheus-node-exporter` en **TODAS** las máquinas de tu red.
+
+Tomatelo como un ejercicio de calentamiento. Entrá una por una a las VMs (`.11`, `.12`, `.13`, `.14`, `.15`, `.16`, `.17`) y tirá:
+```bash
+sudo apt update && sudo apt install prometheus-node-exporter -y
+```
+Listo. No hay que configurar nada. Por defecto escuchan en el puerto 9100 y le cuentan su vida a quien pregunte.
+
+### Paso 3: Instalar la Interfaz Gráfica (Grafana)
+Prometheus junta datos crudos y feos. Grafana los hace lindos.
+
+**Instalar dependencias y repo:**
+```bash
+sudo apt-get install -y apt-transport-https software-properties-common wget
+```
+**Agregar la llave de seguridad (GPG Key):**
+```bash
+sudo mkdir -p /etc/apt/keyrings/
+wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | sudo tee /etc/apt/sources.list.d/grafana.list
+```
+**Instalar y arrancar:**
+```bash
+sudo apt update && sudo apt install grafana -y
+sudo systemctl daemon-reload
+sudo systemctl start grafana-server
+sudo systemctl enable grafana-server
+```
+
+### Paso 4: Configurar el Tablero 🎨
+1.  **Entrar:** Abrí tu navegador y andá a `http://192.168.0.20:3000`.
+2.  **Login:** Usuario `admin`, Password `admin`. (Te va a pedir cambiarlo, poné uno que no te olvides).
+3.  **Conectar Prometheus:**
+      * Click en "Connections" o "Data Sources".
+      * Add data source -> Seleccioná **Prometheus**.
+      * En URL poné: `http://localhost:9090`.
+      * Bajá todo y dale "Save & Test". Si sale verde, estamos joya.
+4.  **Importar Dashboard (La fácil):**
+      * No te vas a poner a diseñar gráficos a mano ahora. Vamos a usar uno hecho.
+      * Andá al ícono de Dashboards -> **Import**.
+      * Donde dice "Import via grafana.com", poné el ID **1860** (Es el clásico "Node Exporter Full").
+      * Dale "Load".
+      * Seleccioná tu fuente de datos "Prometheus" abajo.
+      * **Import**.
+
+---
+
+## 🏁 Final de la Fase 5: El Veredicto
+
+¡Mirá esa pantalla! 😎
+
+Deberías estar viendo gráficos de CPU, RAM, Disco y Red de **TODAS** tus máquinas. Podés filtrar arriba por "Instance" y ver cómo sufre la `192.168.0.17` (DB) o qué tan relajado está el `192.168.0.15` (NFS).
+
+**Checklist de éxito:**
+- [ ] Entrás a `http://wiki.usfx` (configurando tu DNS local) y carga la wiki.
+- [ ] Entrás a `http://192.168.0.20:3000` y ves el dashboard lleno de colores y datos.
+
+Si tenés esto, ya tenés una infraestructura profesional. Solo te falta el **Jefe Final**: La **Fase 6 (Seguridad y Hardening)** para cerrar puertos y que no te entre ningún virus ni hacker trasnochado.
