@@ -1,7 +1,7 @@
-# 🚀 MediaWiki Universitario: Infraestructura High Availability
+#  MediaWiki Universitario
 
 > **Status:** En construcción 🚧  
-> **Objetivo:** Despliegue de MediaWiki escalable, resiliente y a prueba de balas.
+> **Objetivo:** Despliegue de un cluster web escalable, resiliente y monitoreado.
 
 ---
 
@@ -10,7 +10,7 @@
 Para que esto ande **joya**, cada VM necesita su IP estática fija según el diagrama de arquitectura. Asumiendo que estás corriendo **Ubuntu Server 24.04**, el archivo de configuración suele encontrarse en `/etc/netplan/50-cloud-init.yaml` (o a veces `00-installer-config.yaml`).
 
 > [!WARNING]
-> **¡Ojo al piojo! 🧐**
+> **¡Ojo al piojo!🧐**
 > Asegurate que el router físico (el que da internet a las 3 PCs) tenga la puerta de enlace en `192.168.0.1` y la máscara `/24` (255.255.255.0).
 >
 > Si tu router real tiene otra IP (tipo `192.168.1.1`), vas a tener que cambiar las IPs del diseño para que coincidan con ese rango, o las VMs **no van a tener internet**.
