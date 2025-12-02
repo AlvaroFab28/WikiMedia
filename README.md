@@ -27,9 +27,11 @@ En este repo vas a encontrar todo el material necesario...
 ## 👥 El Dream Team
 | Rol | Miembro | GitHub |
 | :--- | :--- | :--- |
-| **Arquitecto de Infraestructura y Seguridad** | [Villena Mamani Alvaro Fabian] | [@AlvaroFab28] |
-| **SysAdmin & Hardening** | [Castro Siñanis Jose Luis] | [@tu_usuario] |
-| **Administrador de Sistemas y Base de Datos** | [Villca Araca Jhesica] | [@cero0202] |
+| **Arquitecto de Infraestructura y Seguridad** | Villena Mamani Alvaro Fabian | @AlvaroFab28 |
+| **SysAdmin & Hardening** | Castro Siñanis Jose Luis | @tu_usuario |
+| **Administrador de Sistemas y Base de Datos** | Villca Araca Jhesica | @cero0202 |
+
+
 Acá está la todo lo que necesitás para montar la infraestructura.
 
 | Tipo | Recurso | Descripción |
