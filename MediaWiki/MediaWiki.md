@@ -200,7 +200,7 @@ Arrancá tu VM de Ubuntu Server (que será la de MariaDB). Logueate. Vamos a fij
               - 1.1.1.1
     ```
 
-    *¿Qué hicimos? Le dijimos a la máquina: "Che, tu nombre es 192.168.0.17, no le pidas nombre a nadie (DHCP no), y si querés salir a internet, andá a la puerta 192.168.0.1".*
+    *¿Qué hicimos? Le dijimos a la máquina: "tu nombre es 192.168.0.17, no le pidas nombre a nadie (DHCP no), y si querés salir a internet ve por 192.168.0.1".*
 
 4.  **Aplicar cambios:**
     ```bash
@@ -313,12 +313,12 @@ Para confirmar que esta VM ya está lista y pasar a la siguiente, hacé lo sigui
     ping 192.168.0.17
     ```
 
-**Si responde, ¡golazo! ⚽**
+**Si responde**
 Ya tenés el servidor de base de datos vivo en la red y listo para recibir conexiones.
 
 > **¿Cómo la ves?** ¿Te funcionó el ping y la configuración de red? Si esto está listo, el siguiente paso lógico es levantar la **VM NFS (Archivos)** antes de meternos con las Wikis.
 
-## Ahora, no nos dormimos en los laureles. Vamos por el segundo pilar de los cimientos: El Servidor NFS (Archivos Compartidos).
+## El Servidor NFS (Archivos Compartidos).
 
 ### 📂 ¿Por qué necesitamos esto? (La lógica detrás del comando)
 Imaginate que tus dos Wikis (App 1 y App 2) son dos personas editando el mismo cuaderno.
