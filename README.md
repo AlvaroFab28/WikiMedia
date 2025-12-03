@@ -19,12 +19,14 @@ En este repo vas a encontrar todo el material necesario...
 ---
 
 ### 📚 1. Material Teórico (Para los que leen)
-* [📖 **Índice del material de temas avanzados**](Temas/Indice_de_Temas.md) _(Arrancá por acá si estás perdido)_
+* [📖 **Índice del material de temas avanzados**](Temas/Indice_de_Temas.md)
 
 ---
 
 ### 🛠️ 2. Proyecto Final SIS313: Plataforma Wiki Universitaria en Alta Disponibilidad (HA)
-##Despliegue de un Cluster Web Escalable, Resiliente y Monitoreado.
+Despliegue de un Cluster Web Escalable, Resiliente y Monitoreado.
+
+---
 *Asignatura:* SIS313: Infraestructura, Plataformas Tecnológicas y Redes  
 *Semestre:* 2/2025  
 *Docente:* Ing. Marcelo Quispe Ortega 
