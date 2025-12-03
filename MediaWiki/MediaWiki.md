@@ -1,16 +1,15 @@
-# 🚀 MediaWiki Universitario: Infraestructura High Availability
+# 🚀 MediaWiki Universitario
 
-> **Status:** En construcción 🚧  
-> **Objetivo:** Despliegue de MediaWiki escalable, resiliente y a prueba de balas.
+> **Status:** En construcción  
+> **Objetivo:** Despliegue de MediaWiki escalable, resiliente.
 
 ---
 
 ## 1. La Configuración de Red (Netplan) 🌐
 
-Para que esto ande **joya**, cada VM necesita su IP estática fija según el diagrama de arquitectura. Asumiendo que estás corriendo **Ubuntu Server 24.04**, el archivo de configuración suele encontrarse en `/etc/netplan/50-cloud-init.yaml` (o a veces `00-installer-config.yaml`).
+Cada VM necesita su IP estática fija según el diagrama de arquitectura. Asumiendo que estás corriendo **Ubuntu Server 24.04**, el archivo de configuración suele encontrarse en `/etc/netplan/50-cloud-init.yaml` (o a veces `00-installer-config.yaml`).
 
 > [!WARNING]
-> **¡Ojo al piojo! 🧐**
 > Asegurate que el router físico (el que da internet a las 3 PCs) tenga la puerta de enlace en `192.168.0.1` y la máscara `/24` (255.255.255.0).
 >
 > Si tu router real tiene otra IP (tipo `192.168.1.1`), vas a tener que cambiar las IPs del diseño para que coincidan con ese rango, o las VMs **no van a tener internet**.
@@ -101,7 +100,7 @@ No se pongan a instalar todo de golpe porque se les va a armar un **quilombo** b
 * **Acción:**
     1.  **Nginx:** Configurar `upstream` apuntando a las IPs de App1 y App2 (`.13` y `.14`).
     2.  **Keepalived:** Configurar la VIP `192.168.0.10`. Uno como **MASTER** y otro como **BACKUP**.
-* **Prueba de fuego:** Si apagás (o desenchufás) el Proxy 1, la VIP `.10` debe saltar automáticamente al Proxy 2 y la wiki seguir andando sin drama.
+* **Prueba de fuego:** Si apagás el Proxy 1, la VIP `.10` debe saltar automáticamente al Proxy 2 y la wiki seguira navegando con normalidad.
 
 ---
 
@@ -111,7 +110,7 @@ No se pongan a instalar todo de golpe porque se les va a armar un **quilombo** b
 #### **VM Redis (`192.168.0.16`)**
 * **Rol:** Memoria a corto plazo para que el sitio vuele.
 * **Acción:** Instalar Redis Server y configurar para escuchar en su IP.
-* **Integración:** Editar el `LocalSettings.php` en las Apps para decirle a MediaWiki: *"Che, guardá las sesiones y el caché de objetos en la IP .16"*. Esto le saca una mochila de encima a la base de datos.
+* **Integración:** Editar el `LocalSettings.php` en las Apps para decirle a MediaWiki: *"guardá las sesiones y el caché de objetos en la IP .16"*.
 
 ---
 
@@ -153,7 +152,7 @@ Se hace al final para no bloquearse afuera.
 
 ## 🗺️ Roadmap de hoy: Los Cimientos (La Base de Datos)
 
-En un edificio no arrancás por el techo, arrancás por los cimientos. En este proyecto, los cimientos son la **Base de Datos (MariaDB)** y el **Almacenamiento (NFS)**. Sin esto, cuando quieras instalar MediaWiki en las otras VMs, te va a tirar error porque no tiene dónde guardar la info.
+En este proyecto, los cimientos son la **Base de Datos (MariaDB)** y el **Almacenamiento (NFS)**. Sin esto, cuando quieras instalar MediaWiki en las otras VMs, te va a tirar error porque no tiene dónde guardar la info.
 
 Vamos a configurar la VM **"MariaDB"**.
 
