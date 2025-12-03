@@ -178,11 +178,6 @@ Los pasos desarrollados en el proyecto.
     - Apps: puerto 80 solo desde Proxies, 2222, 9100 desde monitor.  
     - DB/Redis/NFS: accesibles solo desde IPs autorizadas.
 
-- *Automatización y Gestión (T6):* ✅  
-  - Configuraciones reproducibles de Netplan, Keepalived, Nginx, Dnsmasq, etc.  
-  - Montaje automático de NFS vía /etc/fstab.  
-  - Despliegue organizado por fases y roles claros, evitando configuraciones ad-hoc.
-
 - *Balanceo de Carga/Proxy (T3/T4):* ✅  
   - Nginx como reverse proxy y load balancer (upstream backend_wiki con App1/App2).  
   - VIP como punto único de acceso lógico hacia el clúster.
@@ -214,15 +209,9 @@ Los pasos desarrollados en el proyecto.
   - Dominio y TLS terminan en Proxies; backend interno solo HTTP.  
   - Servicios internos (DB/Redis/NFS) aislados del exterior mediante UFW e IPs permitidas.  
   - DNS propio (srv-monitor) para independencia de Internet y menor latencia interna.
-
----
-### 5 Conclusiones 
-
-
-Se implementó una Wiki Universitaria en Alta Disponibilidad con proxies en HA, dos servidores de aplicación, DB centralizada, NFS, Redis y monitoreo, logrando que el servicio siga funcionando aunque falle uno de los nodos. El proyecto integró en la práctica los temas T1–T6 (continuidad, HA, balanceo, optimización, seguridad y gestión) y demostró que no basta con “tener dos servidores”, sino diseñar bien cómo comparten datos, sesiones y acceso seguro. Como trabajo futuro, se puede añadir un plan de backups/DRP y automatizar todo el despliegue con Ansible.
 ---
 <div align="center">
 
-_Desarrollado con ❤️ y mucho café para Infraestructura 2/2025_
+_Desarrollado Wiki-Universitario_
 
 </div>
